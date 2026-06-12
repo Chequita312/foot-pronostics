@@ -1,6 +1,52 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
+const teamNamesFr: Record<string, string> = {
+  'Brazil': 'Brésil',
+  'Czechia': 'Tchéquie',
+  'Ivory Coast': 'Côte d\'Ivoire',
+  'Morocco': 'Maroc',
+  'Germany': 'Allemagne',
+  'Netherlands': 'Pays-Bas',
+  'Japan': 'Japon',
+  'Spain': 'Espagne',
+  'Portugal': 'Portugal',
+  'England': 'Angleterre',
+  'Belgium': 'Belgique',
+  'Croatia': 'Croatie',
+  'Switzerland': 'Suisse',
+  'Poland': 'Pologne',
+  'Senegal': 'Sénégal',
+  'South Korea': 'Corée du Sud',
+  'United States': 'États-Unis',
+  'Mexico': 'Mexique',
+  'Argentina': 'Argentine',
+  'Uruguay': 'Uruguay',
+  'Ecuador': 'Équateur',
+  'Canada': 'Canada',
+  'Australia': 'Australie',
+  'Scotland': 'Écosse',
+  'Turkey': 'Turquie',
+  'Qatar': 'Qatar',
+  'Paraguay': 'Paraguay',
+  'Bosnia and Herzegovina': 'Bosnie-Herzégovine',
+  'Curacao': 'Curaçao',
+  'Haiti': 'Haïti',
+};
+
+function translateTeam(name: string): string {
+  return teamNamesFr[name] || name;
+}
+
+interface Match {
+  id: number;
+  homeTeam: string;
+  awayTeam: string;
+  competition: string;
+  date: string;
+  status: string;
+}
 
 interface TeamAnalysis {
   name: string;
@@ -24,15 +70,25 @@ interface Analysis {
 }
 
 export default function Home() {
-  const [team1, setTeam1] = useState('');
-  const [team2, setTeam2] = useState('');
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [loadingMatches, setLoadingMatches] = useState(true);
   const [result, setResult] = useState<Analysis | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [analyzingId, setAnalyzingId] = useState<number | null>(null);
   const [error, setError] = useState('');
+  const resultRef = useRef<HTMLDivElement>(null);
 
-  const handleAnalyse = async () => {
-    if (!team1 || !team2) return;
-    setLoading(true);
+  useEffect(() => {
+    fetch('/api/matches')
+      .then((res) => res.json())
+      .then((data) => {
+        setMatches(data.matches || []);
+        setLoadingMatches(false);
+      })
+      .catch(() => setLoadingMatches(false));
+  }, []);
+
+  const handleAnalyse = async (match: Match) => {
+    setAnalyzingId(match.id);
     setResult(null);
     setError('');
 
@@ -40,19 +96,28 @@ export default function Home() {
       const res = await fetch('/api/analyse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team1, team2 }),
+        body: JSON.stringify({ team1: translateTeam(match.homeTeam), team2: translateTeam(match.awayTeam) }),
       });
       const data = await res.json();
       if (data.error) {
         setError('Erreur lors de la génération. Réessayez.');
       } else {
         setResult(data.analysis);
+        setTimeout(() => {
+          resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
       }
     } catch (err) {
       setError('Une erreur est survenue. Réessayez.');
     } finally {
-      setLoading(false);
+      setAnalyzingId(null);
     }
+  };
+
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) +
+      ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
@@ -62,62 +127,64 @@ export default function Home() {
           Pronostics Foot IA
         </h1>
         <p className="text-slate-400 text-sm sm:text-base">
-          Analyse complète générée par intelligence artificielle
+          Matchs des prochains jours — analyses générées par IA
         </p>
       </div>
 
-      <div className="w-full max-w-md flex flex-col gap-4 bg-slate-800/60 backdrop-blur p-6 rounded-2xl border border-slate-700 shadow-2xl">
-        <input
-          type="text"
-          placeholder="Équipe 1 (ex: France)"
-          value={team1}
-          onChange={(e) => setTeam1(e.target.value)}
-          className="p-3 rounded-lg bg-slate-900 border border-slate-700 focus:border-green-500 focus:outline-none transition text-white placeholder:text-slate-500"
-        />
-        <input
-          type="text"
-          placeholder="Équipe 2 (ex: Brésil)"
-          value={team2}
-          onChange={(e) => setTeam2(e.target.value)}
-          className="p-3 rounded-lg bg-slate-900 border border-slate-700 focus:border-green-500 focus:outline-none transition text-white placeholder:text-slate-500"
-        />
-        <button
-          onClick={handleAnalyse}
-          disabled={loading}
-          className="bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-500 hover:to-emerald-400 active:scale-[0.98] p-3 rounded-lg font-bold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {loading ? (
-            <>
-              <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>
-              Analyse en cours...
-            </>
-          ) : (
-            'Analyser le match'
-          )}
-        </button>
+      <div className="w-full max-w-3xl flex flex-col gap-3 mb-10">
+        {loadingMatches && (
+          <p className="text-center text-slate-400">Chargement des matchs...</p>
+        )}
+
+        {!loadingMatches && matches.length === 0 && (
+          <p className="text-center text-slate-400">Aucun match trouvé pour les prochains jours.</p>
+        )}
+
+        {matches.map((match) => (
+          <div
+            key={match.id}
+            className="bg-slate-800/60 border border-slate-700 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+          >
+            <div>
+              <p className="text-xs text-slate-400 mb-1">{match.competition} · {formatDate(match.date)}</p>
+              <p className="font-semibold text-lg">{translateTeam(match.homeTeam)} <span className="text-slate-500">vs</span> {translateTeam(match.awayTeam)}</p>
+            </div>
+            <button
+              onClick={() => handleAnalyse(match)}
+              disabled={analyzingId === match.id}
+              className="bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-500 hover:to-emerald-400 active:scale-[0.98] px-4 py-2 rounded-lg font-bold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap"
+            >
+              {analyzingId === match.id ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"></span>
+                  Analyse...
+                </>
+              ) : (
+                'Analyser'
+              )}
+            </button>
+          </div>
+        ))}
       </div>
 
       {error && (
-        <div className="mt-6 text-red-400 bg-red-950/50 border border-red-800 px-4 py-2 rounded-lg">
+        <div className="mb-6 text-red-400 bg-red-950/50 border border-red-800 px-4 py-2 rounded-lg">
           {error}
         </div>
       )}
 
       {result && (
-        <div className="mt-10 w-full max-w-4xl flex flex-col gap-6">
-          {/* Cartes équipes */}
+        <div ref={resultRef} className="w-full max-w-4xl flex flex-col gap-6">
           <div className="grid sm:grid-cols-2 gap-6">
             <TeamCard team={result.team1} color="blue" />
             <TeamCard team={result.team2} color="red" />
           </div>
 
-          {/* Confrontation directe */}
           <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-6 shadow-xl">
             <h3 className="text-lg font-bold text-amber-300 mb-2">⚔️ Confrontation directe</h3>
             <p className="text-slate-300 leading-relaxed">{result.headToHead}</p>
           </div>
 
-          {/* Pronostic */}
           <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-6 shadow-xl">
             <h3 className="text-lg font-bold text-emerald-300 mb-4">📊 Pronostic</h3>
 
@@ -133,7 +200,6 @@ export default function Home() {
             <p className="text-slate-300 leading-relaxed">{result.prediction.justification}</p>
           </div>
 
-          {/* Synthèse */}
           <div className="bg-gradient-to-r from-emerald-900/40 to-blue-900/40 border border-slate-700 rounded-2xl p-6 shadow-xl">
             <h3 className="text-lg font-bold text-white mb-2">💬 Synthèse</h3>
             <p className="text-slate-200 italic leading-relaxed">{result.summary}</p>
