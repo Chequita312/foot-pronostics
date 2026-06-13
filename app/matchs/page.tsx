@@ -77,14 +77,6 @@ interface Analysis {
   summary: string;
 }
 
-interface ServerQuota {
-  isUnlimited: boolean;
-  used: number;
-  remaining: number;
-}
-
-const MAX_FREE = 3;
-
 export default function Home() {
   const { data: session } = useSession();
   const [matches, setMatches] = useState<Match[]>([]);
@@ -92,34 +84,25 @@ export default function Home() {
   const [result, setResult] = useState<Analysis | null>(null);
   const [analyzingId, setAnalyzingId] = useState<number | null>(null);
   const [error, setError] = useState('');
-  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
-  const [subscribing, setSubscribing] = useState(false);
-  const [serverQuota, setServerQuota] = useState<ServerQuota | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [buyingPack, setBuyingPack] = useState<'starter' | 'standard' | null>(null);
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
 
-  // Client-side quota for non-authenticated users (localStorage)
   const { remaining: localRemaining, limitReached: localLimitReached, increment: localIncrement } = useFreeAnalyses();
 
-  // Fetch server quota when session is available
+  const isAuthenticated = !!session?.user;
+
+  // Fetch credit balance for authenticated users
   useEffect(() => {
     if (!session?.user) return;
     fetch('/api/quota')
       .then((r) => r.json())
       .then((q) => {
-        if (q.authenticated) {
-          setServerQuota({ isUnlimited: q.isUnlimited, used: q.used, remaining: q.remaining });
-        }
+        if (q.isConnected) setCreditBalance(q.creditBalance);
       })
       .catch(() => {});
   }, [session]);
-
-  // Unified quota values
-  const isAuthenticated = !!session?.user;
-  const isUnlimited = serverQuota?.isUnlimited ?? false;
-  const remaining = isAuthenticated ? (serverQuota?.remaining ?? null) : localRemaining;
-  const limitReached = isAuthenticated
-    ? (serverQuota !== null && !isUnlimited && serverQuota.remaining <= 0)
-    : localLimitReached;
 
   useEffect(() => {
     fetch('/api/matches')
@@ -131,9 +114,14 @@ export default function Home() {
       .catch(() => setLoadingMatches(false));
   }, []);
 
+  // Unified limit check
+  const limitReached = isAuthenticated
+    ? (creditBalance !== null && creditBalance <= 0)
+    : localLimitReached;
+
   const handleAnalyse = async (match: Match) => {
     if (limitReached) {
-      setShowSubscribeModal(true);
+      setShowModal(true);
       return;
     }
 
@@ -153,22 +141,19 @@ export default function Home() {
       const data = await res.json();
 
       if (data.error) {
-        if (res.status === 429 && data.error.includes('Quota mensuel')) {
-          // Server confirmed quota exhausted — update client state and show modal
-          if (serverQuota) setServerQuota({ ...serverQuota, remaining: 0 });
-          setShowSubscribeModal(true);
-        }
-        setError(
-          data.error === 'Limite quotidienne atteinte. Réessayez demain.'
-            ? data.error
-            : data.error.includes('Quota mensuel')
-              ? ''
+        if (res.status === 429 && data.error.includes('Crédits insuffisants')) {
+          if (creditBalance !== null) setCreditBalance(0);
+          setShowModal(true);
+        } else {
+          setError(
+            data.error === 'Limite quotidienne atteinte. Réessayez demain.'
+              ? data.error
               : 'Erreur lors de la génération. Réessayez.',
-        );
+          );
+        }
       } else {
-        // Update quota after success
-        if (isAuthenticated && serverQuota && !isUnlimited) {
-          setServerQuota({ ...serverQuota, remaining: Math.max(serverQuota.remaining - 1, 0) });
+        if (isAuthenticated && creditBalance !== null) {
+          setCreditBalance(Math.max(creditBalance - 1, 0));
         } else if (!isAuthenticated) {
           localIncrement();
         }
@@ -184,14 +169,19 @@ export default function Home() {
     }
   };
 
-  const handleSubscribe = async () => {
-    setSubscribing(true);
+  const handleBuyCredits = async (pack: 'starter' | 'standard') => {
+    setBuyingPack(pack);
     try {
-      const res = await fetch('/api/checkout', { method: 'POST' });
-      const { url } = await res.json();
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pack }),
+      });
+      const { url, error: err } = await res.json();
+      if (err) { setBuyingPack(null); return; }
       window.location.href = url;
     } catch {
-      setSubscribing(false);
+      setBuyingPack(null);
     }
   };
 
@@ -204,12 +194,9 @@ export default function Home() {
     );
   };
 
-  const showCounter = !isUnlimited && remaining !== null;
-
   return (
     <main className="min-h-screen bg-[#05080f] text-[#e8eef5] flex flex-col items-center px-4 sm:px-6 py-10 font-sans relative overflow-hidden">
 
-      {/* Glow de fond */}
       <div className="fixed top-[-10%] left-[20%] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="fixed top-[20%] right-[10%] w-[400px] h-[400px] bg-cyan-500/10 rounded-full blur-[120px] pointer-events-none"></div>
 
@@ -226,55 +213,52 @@ export default function Home() {
             <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">.</span>
           </h1>
         </div>
-        <p className="text-[#7a8a9a] text-sm">
-          Données, statistiques et pronostics football
-        </p>
+        <p className="text-[#7a8a9a] text-sm">Données, statistiques et pronostics football</p>
 
-        {isUnlimited && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.4 }}
-            className="flex items-center gap-2 mt-3"
-          >
-            <span className="text-xs font-semibold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-              ✦ Analyses illimitées
-            </span>
-          </motion.div>
-        )}
-
-        {showCounter && !limitReached && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.4 }}
-            className="flex items-center gap-2.5 mt-3"
-          >
-            <div className="flex gap-1">
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className={`w-2 h-2 rounded-full transition-colors ${
-                    i < (remaining ?? 0) ? 'bg-emerald-400' : 'bg-[#1c2838]'
-                  }`}
-                />
-              ))}
-            </div>
-            <span className={`text-xs font-medium ${remaining === 1 ? 'text-orange-400' : 'text-[#7a8a9a]'}`}>
-              {remaining} analyse{(remaining ?? 0) > 1 ? 's' : ''} gratuite{(remaining ?? 0) > 1 ? 's' : ''} restante{(remaining ?? 0) > 1 ? 's' : ''}{isAuthenticated ? ' ce mois-ci' : ''}
-            </span>
-          </motion.div>
-        )}
+        {/* Credit indicator */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+          className="mt-3"
+        >
+          {isAuthenticated ? (
+            creditBalance !== null && (
+              <span className={`text-xs font-medium ${creditBalance <= 5 && creditBalance > 0 ? 'text-orange-400' : creditBalance === 0 ? 'text-red-400' : 'text-[#7a8a9a]'}`}>
+                {creditBalance === 0
+                  ? 'Plus de crédits — rechargez votre compte'
+                  : `${creditBalance} analyse${creditBalance > 1 ? 's' : ''} disponible${creditBalance > 1 ? 's' : ''}`}
+              </span>
+            )
+          ) : (
+            !localLimitReached && (
+              <div className="flex items-center gap-2.5">
+                <div className="flex gap-1">
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className={`w-2 h-2 rounded-full transition-colors ${
+                        i < localRemaining ? 'bg-emerald-400' : 'bg-[#1c2838]'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span className={`text-xs font-medium ${localRemaining === 1 ? 'text-orange-400' : 'text-[#7a8a9a]'}`}>
+                  {localRemaining} analyse{localRemaining > 1 ? 's' : ''} gratuite{localRemaining > 1 ? 's' : ''} restante{localRemaining > 1 ? 's' : ''}
+                </span>
+              </div>
+            )
+          )}
+        </motion.div>
       </motion.div>
 
-      {/* Liste des matchs */}
+      {/* Match list */}
       <div className="w-full max-w-3xl flex flex-col gap-3 mb-16 relative z-10">
         <p className="text-xs uppercase tracking-widest text-[#5a6a7a] mb-2 pl-1 font-semibold">Matchs à venir</p>
 
         {loadingMatches && (
           <p className="text-[#5a6a7a] text-sm py-8 text-center">Chargement des matchs...</p>
         )}
-
         {!loadingMatches && matches.length === 0 && (
           <p className="text-[#5a6a7a] text-sm py-8 text-center">Aucun match trouvé pour les prochains jours.</p>
         )}
@@ -289,8 +273,14 @@ export default function Home() {
             className="bg-[#0d1420]/80 border border-[#1c2838] rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 backdrop-blur-sm transition-colors hover:border-emerald-500/40"
           >
             <div>
-              <p className="text-[11px] uppercase tracking-wider text-[#5a6a7a] mb-1">{match.competition} · {formatDate(match.date)}</p>
-              <p className="font-bold text-base">{translateTeam(match.homeTeam)} <span className="text-[#5a6a7a] font-normal">vs</span> {translateTeam(match.awayTeam)}</p>
+              <p className="text-[11px] uppercase tracking-wider text-[#5a6a7a] mb-1">
+                {match.competition} · {formatDate(match.date)}
+              </p>
+              <p className="font-bold text-base">
+                {translateTeam(match.homeTeam)}{' '}
+                <span className="text-[#5a6a7a] font-normal">vs</span>{' '}
+                {translateTeam(match.awayTeam)}
+              </p>
             </div>
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -349,15 +339,16 @@ export default function Home() {
               className="bg-[#0d1420]/80 border border-[#1c2838] rounded-xl p-6 backdrop-blur-sm"
             >
               <h3 className="text-xs uppercase tracking-widest text-emerald-400 font-bold mb-5">Pronostic</h3>
-
               <div className="flex flex-col gap-4 mb-6">
                 <PredictionBar label={result.team1.name} percent={result.prediction.team1WinPercent} delay={0.4} />
                 <PredictionBar label="Match nul" percent={result.prediction.drawPercent} delay={0.5} />
                 <PredictionBar label={result.team2.name} percent={result.prediction.team2WinPercent} delay={0.6} />
               </div>
-
               <p className="text-[11px] uppercase tracking-wider text-[#5a6a7a] mb-3">
-                Indice de confiance — <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent font-bold">{result.prediction.confidence}/100</span>
+                Indice de confiance —{' '}
+                <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent font-bold">
+                  {result.prediction.confidence}/100
+                </span>
               </p>
               <p className="text-[#c5d0db] leading-relaxed text-sm">{result.prediction.justification}</p>
             </motion.div>
@@ -379,55 +370,94 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* Modale abonnement */}
+      {/* Modal crédits */}
       <AnimatePresence>
-        {showSubscribeModal && (
+        {showModal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-[#05080f]/80 backdrop-blur-sm px-4"
-            onClick={() => setShowSubscribeModal(false)}
+            onClick={() => setShowModal(false)}
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.93, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.93, y: 16 }}
               transition={{ duration: 0.25 }}
-              className="max-w-sm w-full bg-[#0d1420] border border-[#1c2838] rounded-2xl p-8 text-center"
+              className="max-w-sm w-full bg-[#0d1420] border border-[#1c2838] rounded-2xl p-8"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex justify-center mb-5">
-                <div className="flex gap-1.5">
-                  {[0, 1, 2].map((i) => (
-                    <div key={i} className="w-2.5 h-2.5 rounded-full bg-[#1c2838]" />
-                  ))}
-                </div>
-              </div>
-
-              <h2 className="text-xl font-black tracking-tight mb-2">Quota atteint</h2>
-              <p className="text-[#7a8a9a] text-sm leading-relaxed mb-6">
-                Tu as utilisé tes {MAX_FREE} analyses gratuites{isAuthenticated ? ' ce mois-ci' : ''}. Passe à l&apos;abonnement pour continuer sans limite.
+              <h2 className="text-xl font-black tracking-tight mb-1 text-center">Crédits épuisés</h2>
+              <p className="text-[#7a8a9a] text-sm leading-relaxed mb-6 text-center">
+                {isAuthenticated
+                  ? 'Rechargez votre compte pour continuer à analyser des matchs.'
+                  : 'Connectez-vous et rechargez votre compte pour continuer.'}
               </p>
 
-              <div className="bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20 rounded-xl px-5 py-4 mb-6">
-                <p className="text-2xl font-black text-white mb-0.5">9€<span className="text-base font-normal text-[#7a8a9a]">/mois</span></p>
-                <p className="text-xs text-[#5a6a7a]">Analyses illimitées · Sans engagement</p>
-              </div>
+              {isAuthenticated ? (
+                <div className="flex flex-col gap-3">
+                  {/* Pack Starter */}
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => handleBuyCredits('starter')}
+                    disabled={buyingPack !== null}
+                    className="w-full border border-emerald-500/30 hover:border-emerald-500/60 bg-emerald-500/5 hover:bg-emerald-500/10 rounded-xl px-5 py-4 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-bold text-[#e8eef5] text-sm">Pack Starter</p>
+                        <p className="text-xs text-[#7a8a9a] mt-0.5">50 analyses</p>
+                      </div>
+                      <span className="text-xl font-black text-white">
+                        5€
+                      </span>
+                    </div>
+                    {buyingPack === 'starter' && (
+                      <p className="text-xs text-emerald-400 mt-2">Redirection...</p>
+                    )}
+                  </motion.button>
 
-              <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={handleSubscribe}
-                disabled={subscribing}
-                className="w-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-[#05080f] py-3 rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg shadow-emerald-500/20 disabled:opacity-60 disabled:cursor-not-allowed mb-3"
-              >
-                {subscribing ? 'Redirection...' : 'S\'abonner pour 9€/mois'}
-              </motion.button>
+                  {/* Pack Standard */}
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => handleBuyCredits('standard')}
+                    disabled={buyingPack !== null}
+                    className="w-full border border-cyan-500/30 hover:border-cyan-500/60 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 hover:from-emerald-500/15 hover:to-cyan-500/15 rounded-xl px-5 py-4 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-[#e8eef5] text-sm">Pack Standard</p>
+                          <span className="text-[10px] font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent uppercase tracking-wider">
+                            Meilleure valeur
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#7a8a9a] mt-0.5">120 analyses</p>
+                      </div>
+                      <span className="text-xl font-black text-white">
+                        10€
+                      </span>
+                    </div>
+                    {buyingPack === 'standard' && (
+                      <p className="text-xs text-cyan-400 mt-2">Redirection...</p>
+                    )}
+                  </motion.button>
+                </div>
+              ) : (
+                <a
+                  href="/connexion"
+                  className="block w-full text-center bg-gradient-to-r from-emerald-500 to-cyan-500 text-[#05080f] py-3 rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg shadow-emerald-500/20 mb-3"
+                >
+                  Se connecter
+                </a>
+              )}
 
               <button
-                onClick={() => setShowSubscribeModal(false)}
-                className="text-xs text-[#5a6a7a] hover:text-[#7a8a9a] transition-colors"
+                onClick={() => setShowModal(false)}
+                className="block w-full text-center mt-4 text-xs text-[#5a6a7a] hover:text-[#7a8a9a] transition-colors"
               >
                 Fermer
               </button>
@@ -486,7 +516,7 @@ function PredictionBar({ label, percent, delay }: { label: string; percent: numb
           animate={{ width: `${percent}%` }}
           transition={{ duration: 0.8, delay, ease: 'easeOut' }}
           className="bg-gradient-to-r from-emerald-400 to-cyan-400 h-1.5 rounded-full"
-        ></motion.div>
+        />
       </div>
     </div>
   );

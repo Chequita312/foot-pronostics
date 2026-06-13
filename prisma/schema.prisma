@@ -15,11 +15,8 @@ model User {
   accounts      Account[]
   sessions      Session[]
 
-  subscriptionStatus    String    @default("free")
-  stripeCustomerId      String?
-  stripeSubscriptionId  String?
-  analysesUsedThisMonth Int       @default(0)
-  analysesResetDate     DateTime?
+  creditBalance    Int     @default(3)
+  stripeCustomerId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
