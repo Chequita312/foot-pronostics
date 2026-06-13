@@ -23,7 +23,7 @@ export async function GET() {
 
   try {
     const response = await fetch(
-      `https://api.football-data.org/v4/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`,
+     `https://api.football-data.org/v4/matches?dateFrom=${dateFrom}&dateTo=${dateTo}&competitions=WC,CL,PL,FL1`,
       {
         headers: {
           'X-Auth-Token': process.env.FOOTBALL_API_KEY!,
