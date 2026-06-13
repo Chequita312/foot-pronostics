@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useFreeAnalyses } from '@/lib/useFreeAnalyses';
 
 const teamNamesFr: Record<string, string> = {
   'Brazil': 'Brésil',
@@ -81,7 +82,11 @@ export default function Home() {
   const [result, setResult] = useState<Analysis | null>(null);
   const [analyzingId, setAnalyzingId] = useState<number | null>(null);
   const [error, setError] = useState('');
+  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
   const resultRef = useRef<HTMLDivElement>(null);
+
+  const { remaining, limitReached, increment } = useFreeAnalyses();
 
   useEffect(() => {
     fetch('/api/matches')
@@ -94,6 +99,11 @@ export default function Home() {
   }, []);
 
   const handleAnalyse = async (match: Match) => {
+    if (limitReached) {
+      setShowSubscribeModal(true);
+      return;
+    }
+
     setAnalyzingId(match.id);
     setResult(null);
     setError('');
@@ -108,15 +118,27 @@ export default function Home() {
       if (data.error) {
         setError(data.error === 'Limite quotidienne atteinte. Réessayez demain.' ? data.error : 'Erreur lors de la génération. Réessayez.');
       } else {
+        increment();
         setResult(data.analysis);
         setTimeout(() => {
           resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 100);
       }
-    } catch (err) {
+    } catch {
       setError('Une erreur est survenue. Réessayez.');
     } finally {
       setAnalyzingId(null);
+    }
+  };
+
+  const handleSubscribe = async () => {
+    setSubscribing(true);
+    try {
+      const res = await fetch('/api/checkout', { method: 'POST' });
+      const { url } = await res.json();
+      window.location.href = url;
+    } catch {
+      setSubscribing(false);
     }
   };
 
@@ -149,6 +171,29 @@ export default function Home() {
         <p className="text-[#7a8a9a] text-sm">
           Données, statistiques et pronostics football
         </p>
+
+        {!limitReached && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+            className="flex items-center gap-2.5 mt-3"
+          >
+            <div className="flex gap-1">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className={`w-2 h-2 rounded-full transition-colors ${
+                    i < remaining ? 'bg-emerald-400' : 'bg-[#1c2838]'
+                  }`}
+                />
+              ))}
+            </div>
+            <span className={`text-xs font-medium ${remaining === 1 ? 'text-orange-400' : 'text-[#7a8a9a]'}`}>
+              {remaining} analyse{remaining > 1 ? 's' : ''} gratuite{remaining > 1 ? 's' : ''} restante{remaining > 1 ? 's' : ''}
+            </span>
+          </motion.div>
+        )}
       </motion.div>
 
       {/* Liste des matchs */}
@@ -257,8 +302,65 @@ export default function Home() {
             </motion.div>
 
             <p className="text-center text-[11px] text-[#5a6a7a] py-2 uppercase tracking-wider">
-              Analyse statistique générée par IA — aucun résultat sportif n'est garanti
+              Analyse statistique générée par IA — aucun résultat sportif n&apos;est garanti
             </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modale abonnement */}
+      <AnimatePresence>
+        {showSubscribeModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-[#05080f]/80 backdrop-blur-sm px-4"
+            onClick={() => setShowSubscribeModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.93, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.93, y: 16 }}
+              transition={{ duration: 0.25 }}
+              className="max-w-sm w-full bg-[#0d1420] border border-[#1c2838] rounded-2xl p-8 text-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-center mb-5">
+                <div className="flex gap-1.5">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="w-2.5 h-2.5 rounded-full bg-[#1c2838]" />
+                  ))}
+                </div>
+              </div>
+
+              <h2 className="text-xl font-black tracking-tight mb-2">Quota atteint</h2>
+              <p className="text-[#7a8a9a] text-sm leading-relaxed mb-6">
+                Tu as utilisé tes 3 analyses gratuites. Passe à l&apos;abonnement pour continuer sans limite.
+              </p>
+
+              <div className="bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20 rounded-xl px-5 py-4 mb-6">
+                <p className="text-2xl font-black text-white mb-0.5">9€<span className="text-base font-normal text-[#7a8a9a]">/mois</span></p>
+                <p className="text-xs text-[#5a6a7a]">Analyses illimitées · Sans engagement</p>
+              </div>
+
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={handleSubscribe}
+                disabled={subscribing}
+                className="w-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-[#05080f] py-3 rounded-xl font-bold text-sm uppercase tracking-wider shadow-lg shadow-emerald-500/20 disabled:opacity-60 disabled:cursor-not-allowed mb-3"
+              >
+                {subscribing ? 'Redirection...' : 'S\'abonner pour 9€/mois'}
+              </motion.button>
+
+              <button
+                onClick={() => setShowSubscribeModal(false)}
+                className="text-xs text-[#5a6a7a] hover:text-[#7a8a9a] transition-colors"
+              >
+                Fermer
+              </button>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

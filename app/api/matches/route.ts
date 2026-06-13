@@ -1,19 +1,14 @@
 import { NextResponse } from 'next/server';
-let requestCount = 0;
-let lastResetDate = new Date().toDateString();
 
-function checkLimit(): boolean {
-  const today = new Date().toDateString();
-  if (today !== lastResetDate) {
-    requestCount = 0;
-    lastResetDate = today;
-  }
-  if (requestCount >= 30) {
-    return false;
-  }
-  requestCount++;
-  return true;
-}
+type RawMatch = {
+  id: number;
+  homeTeam?: { name?: string };
+  awayTeam?: { name?: string };
+  competition?: { name?: string };
+  utcDate: string;
+  status: string;
+};
+
 export async function GET() {
   const today = new Date();
   const dateFrom = today.toISOString().split('T')[0];
@@ -33,7 +28,7 @@ export async function GET() {
 
     const data = await response.json();
 
-    const matches = (data.matches || []).map((m: any) => ({
+    const matches = (data.matches || []).map((m: RawMatch) => ({
       id: m.id,
       homeTeam: m.homeTeam?.name,
       awayTeam: m.awayTeam?.name,
@@ -43,7 +38,7 @@ export async function GET() {
     }));
 
     return NextResponse.json({ matches });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Erreur lors de la récupération des matchs.' }, { status: 500 });
   }
 }

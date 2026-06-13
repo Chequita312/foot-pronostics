@@ -62,7 +62,7 @@ export default function CommentCaMarche() {
           className="bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20 rounded-xl p-6 mt-2"
         >
           <p className="text-[#e8eef5] leading-relaxed text-sm italic">
-            Important : ces analyses sont des outils d'aide à la compréhension des matchs, basés sur des données statistiques.
+            Important : ces analyses sont des outils d&apos;aide à la compréhension des matchs, basés sur des données statistiques.
             Elles ne garantissent aucun résultat sportif, le football restant par nature imprévisible.
           </p>
         </motion.div>

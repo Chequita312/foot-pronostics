@@ -74,7 +74,7 @@ Les trois pourcentages team1WinPercent, drawPercent et team2WinPercent doivent t
     const analysis = JSON.parse(text);
 
     return NextResponse.json({ analysis });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Erreur lors de la génération.' }, { status: 500 });
   }
 }
