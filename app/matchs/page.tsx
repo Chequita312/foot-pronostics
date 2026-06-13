@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSession } from 'next-auth/react';
 import { useFreeAnalyses } from '@/lib/useFreeAnalyses';
 
 const teamNamesFr: Record<string, string> = {
@@ -76,7 +77,16 @@ interface Analysis {
   summary: string;
 }
 
+interface ServerQuota {
+  isUnlimited: boolean;
+  used: number;
+  remaining: number;
+}
+
+const MAX_FREE = 3;
+
 export default function Home() {
+  const { data: session } = useSession();
   const [matches, setMatches] = useState<Match[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [result, setResult] = useState<Analysis | null>(null);
@@ -84,9 +94,32 @@ export default function Home() {
   const [error, setError] = useState('');
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
+  const [serverQuota, setServerQuota] = useState<ServerQuota | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
 
-  const { remaining, limitReached, increment } = useFreeAnalyses();
+  // Client-side quota for non-authenticated users (localStorage)
+  const { remaining: localRemaining, limitReached: localLimitReached, increment: localIncrement } = useFreeAnalyses();
+
+  // Fetch server quota when session is available
+  useEffect(() => {
+    if (!session?.user) return;
+    fetch('/api/quota')
+      .then((r) => r.json())
+      .then((q) => {
+        if (q.authenticated) {
+          setServerQuota({ isUnlimited: q.isUnlimited, used: q.used, remaining: q.remaining });
+        }
+      })
+      .catch(() => {});
+  }, [session]);
+
+  // Unified quota values
+  const isAuthenticated = !!session?.user;
+  const isUnlimited = serverQuota?.isUnlimited ?? false;
+  const remaining = isAuthenticated ? (serverQuota?.remaining ?? null) : localRemaining;
+  const limitReached = isAuthenticated
+    ? (serverQuota !== null && !isUnlimited && serverQuota.remaining <= 0)
+    : localLimitReached;
 
   useEffect(() => {
     fetch('/api/matches')
@@ -112,13 +145,33 @@ export default function Home() {
       const res = await fetch('/api/analyse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team1: translateTeam(match.homeTeam), team2: translateTeam(match.awayTeam) }),
+        body: JSON.stringify({
+          team1: translateTeam(match.homeTeam),
+          team2: translateTeam(match.awayTeam),
+        }),
       });
       const data = await res.json();
+
       if (data.error) {
-        setError(data.error === 'Limite quotidienne atteinte. Réessayez demain.' ? data.error : 'Erreur lors de la génération. Réessayez.');
+        if (res.status === 429 && data.error.includes('Quota mensuel')) {
+          // Server confirmed quota exhausted — update client state and show modal
+          if (serverQuota) setServerQuota({ ...serverQuota, remaining: 0 });
+          setShowSubscribeModal(true);
+        }
+        setError(
+          data.error === 'Limite quotidienne atteinte. Réessayez demain.'
+            ? data.error
+            : data.error.includes('Quota mensuel')
+              ? ''
+              : 'Erreur lors de la génération. Réessayez.',
+        );
       } else {
-        increment();
+        // Update quota after success
+        if (isAuthenticated && serverQuota && !isUnlimited) {
+          setServerQuota({ ...serverQuota, remaining: Math.max(serverQuota.remaining - 1, 0) });
+        } else if (!isAuthenticated) {
+          localIncrement();
+        }
         setResult(data.analysis);
         setTimeout(() => {
           resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -144,9 +197,14 @@ export default function Home() {
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
-    return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) +
-      ' · ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    return (
+      d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) +
+      ' · ' +
+      d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    );
   };
+
+  const showCounter = !isUnlimited && remaining !== null;
 
   return (
     <main className="min-h-screen bg-[#05080f] text-[#e8eef5] flex flex-col items-center px-4 sm:px-6 py-10 font-sans relative overflow-hidden">
@@ -172,7 +230,20 @@ export default function Home() {
           Données, statistiques et pronostics football
         </p>
 
-        {!limitReached && (
+        {isUnlimited && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+            className="flex items-center gap-2 mt-3"
+          >
+            <span className="text-xs font-semibold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+              ✦ Analyses illimitées
+            </span>
+          </motion.div>
+        )}
+
+        {showCounter && !limitReached && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -184,13 +255,13 @@ export default function Home() {
                 <div
                   key={i}
                   className={`w-2 h-2 rounded-full transition-colors ${
-                    i < remaining ? 'bg-emerald-400' : 'bg-[#1c2838]'
+                    i < (remaining ?? 0) ? 'bg-emerald-400' : 'bg-[#1c2838]'
                   }`}
                 />
               ))}
             </div>
             <span className={`text-xs font-medium ${remaining === 1 ? 'text-orange-400' : 'text-[#7a8a9a]'}`}>
-              {remaining} analyse{remaining > 1 ? 's' : ''} gratuite{remaining > 1 ? 's' : ''} restante{remaining > 1 ? 's' : ''}
+              {remaining} analyse{(remaining ?? 0) > 1 ? 's' : ''} gratuite{(remaining ?? 0) > 1 ? 's' : ''} restante{(remaining ?? 0) > 1 ? 's' : ''}{isAuthenticated ? ' ce mois-ci' : ''}
             </span>
           </motion.div>
         )}
@@ -336,7 +407,7 @@ export default function Home() {
 
               <h2 className="text-xl font-black tracking-tight mb-2">Quota atteint</h2>
               <p className="text-[#7a8a9a] text-sm leading-relaxed mb-6">
-                Tu as utilisé tes 3 analyses gratuites. Passe à l&apos;abonnement pour continuer sans limite.
+                Tu as utilisé tes {MAX_FREE} analyses gratuites{isAuthenticated ? ' ce mois-ci' : ''}. Passe à l&apos;abonnement pour continuer sans limite.
               </p>
 
               <div className="bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20 rounded-xl px-5 py-4 mb-6">
