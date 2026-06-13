@@ -1,5 +1,19 @@
 import { NextResponse } from 'next/server';
+let requestCount = 0;
+let lastResetDate = new Date().toDateString();
 
+function checkLimit(): boolean {
+  const today = new Date().toDateString();
+  if (today !== lastResetDate) {
+    requestCount = 0;
+    lastResetDate = today;
+  }
+  if (requestCount >= 30) {
+    return false;
+  }
+  requestCount++;
+  return true;
+}
 export async function GET() {
   const today = new Date();
   const dateFrom = today.toISOString().split('T')[0];

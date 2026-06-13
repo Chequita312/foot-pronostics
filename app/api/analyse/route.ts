@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
+let requestCount = 0;
+let lastResetDate = new Date().toDateString();
 
+function checkLimit(): boolean {
+  const today = new Date().toDateString();
+  if (today !== lastResetDate) {
+    requestCount = 0;
+    lastResetDate = today;
+  }
+  if (requestCount >= 30) {
+    return false;
+  }
+  requestCount++;
+  return true;
+}
 export async function POST(req: NextRequest) {
+  if (!checkLimit()) {
+    return NextResponse.json({ error: 'Limite quotidienne atteinte. Réessayez demain.' }, { status: 429 });
+  }
   const { team1, team2 } = await req.json();
 
   const prompt = `Tu es un analyste sportif expert. Analyse le match à venir entre ${team1} et ${team2}.
