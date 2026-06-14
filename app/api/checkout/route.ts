@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { auth } from '@/auth';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-
 const PACKS = {
-  standard: { priceId: process.env.STRIPE_PRICE_STANDARD!, credits: 120 },
-  pro:      { priceId: process.env.STRIPE_PRICE_PRO!,      credits: 300 },
+  standard: { credits: 120 },
+  pro:      { credits: 300 },
 } as const;
+
+let stripe: Stripe | null = null;
+function getStripe() {
+  if (!stripe) stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+  return stripe;
+}
 
 export async function POST(req: NextRequest) {
   const { pack } = await req.json() as { pack: string };
@@ -22,11 +26,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Vous devez être connecté pour acheter des crédits.' }, { status: 401 });
   }
 
+  const priceId = pack === 'standard'
+    ? process.env.STRIPE_PRICE_STANDARD!
+    : process.env.STRIPE_PRICE_PRO!;
+
   const baseUrl = process.env.NEXTAUTH_URL ?? 'http://localhost:3000';
 
-  const checkoutSession = await stripe.checkout.sessions.create({
+  const checkoutSession = await getStripe().checkout.sessions.create({
     mode: 'payment',
-    line_items: [{ price: packConfig.priceId, quantity: 1 }],
+    line_items: [{ price: priceId, quantity: 1 }],
     metadata: {
       userId: session.user.id,
       pack,
