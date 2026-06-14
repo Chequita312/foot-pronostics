@@ -5,8 +5,8 @@ import { auth } from '@/auth';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const PACKS = {
-  starter:  { name: 'Kickdata — Pack Starter (50 analyses)',  amount: 500,  credits: 50  },
-  standard: { name: 'Kickdata — Pack Standard (120 analyses)', amount: 1000, credits: 120 },
+  standard: { priceId: process.env.STRIPE_PRICE_STANDARD!, credits: 120 },
+  pro:      { priceId: process.env.STRIPE_PRICE_PRO!,      credits: 300 },
 } as const;
 
 export async function POST(req: NextRequest) {
@@ -26,16 +26,7 @@ export async function POST(req: NextRequest) {
 
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: 'payment',
-    line_items: [
-      {
-        price_data: {
-          currency: 'eur',
-          product_data: { name: packConfig.name },
-          unit_amount: packConfig.amount,
-        },
-        quantity: 1,
-      },
-    ],
+    line_items: [{ price: packConfig.priceId, quantity: 1 }],
     metadata: {
       userId: session.user.id,
       pack,

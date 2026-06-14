@@ -85,7 +85,7 @@ export default function Home() {
   const [analyzingId, setAnalyzingId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [buyingPack, setBuyingPack] = useState<'starter' | 'standard' | null>(null);
+  const [buyingPack, setBuyingPack] = useState<'standard' | 'pro' | null>(null);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
 
@@ -169,7 +169,7 @@ export default function Home() {
     }
   };
 
-  const handleBuyCredits = async (pack: 'starter' | 'standard') => {
+  const handleBuyCredits = async (pack: 'standard' | 'pro') => {
     setBuyingPack(pack);
     try {
       const res = await fetch('/api/checkout', {
@@ -397,51 +397,47 @@ export default function Home() {
 
               {isAuthenticated ? (
                 <div className="flex flex-col gap-3">
-                  {/* Pack Starter */}
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => handleBuyCredits('starter')}
-                    disabled={buyingPack !== null}
-                    className="w-full border border-emerald-500/30 hover:border-emerald-500/60 bg-emerald-500/5 hover:bg-emerald-500/10 rounded-xl px-5 py-4 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-bold text-[#e8eef5] text-sm">Pack Starter</p>
-                        <p className="text-xs text-[#7a8a9a] mt-0.5">50 analyses</p>
-                      </div>
-                      <span className="text-xl font-black text-white">
-                        5€
-                      </span>
-                    </div>
-                    {buyingPack === 'starter' && (
-                      <p className="text-xs text-emerald-400 mt-2">Redirection...</p>
-                    )}
-                  </motion.button>
-
                   {/* Pack Standard */}
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => handleBuyCredits('standard')}
                     disabled={buyingPack !== null}
+                    className="w-full border border-emerald-500/30 hover:border-emerald-500/60 bg-emerald-500/5 hover:bg-emerald-500/10 rounded-xl px-5 py-4 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-bold text-[#e8eef5] text-sm">Pack Standard</p>
+                        <p className="text-xs text-[#7a8a9a] mt-0.5">120 analyses</p>
+                      </div>
+                      <span className="text-xl font-black text-white">10€</span>
+                    </div>
+                    {buyingPack === 'standard' && (
+                      <p className="text-xs text-emerald-400 mt-2">Redirection...</p>
+                    )}
+                  </motion.button>
+
+                  {/* Pack Pro */}
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => handleBuyCredits('pro')}
+                    disabled={buyingPack !== null}
                     className="w-full border border-cyan-500/30 hover:border-cyan-500/60 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 hover:from-emerald-500/15 hover:to-cyan-500/15 rounded-xl px-5 py-4 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden"
                   >
                     <div className="flex justify-between items-start">
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-bold text-[#e8eef5] text-sm">Pack Standard</p>
+                          <p className="font-bold text-[#e8eef5] text-sm">Pack Pro</p>
                           <span className="text-[10px] font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent uppercase tracking-wider">
                             Meilleure valeur
                           </span>
                         </div>
-                        <p className="text-xs text-[#7a8a9a] mt-0.5">120 analyses</p>
+                        <p className="text-xs text-[#7a8a9a] mt-0.5">300 analyses</p>
                       </div>
-                      <span className="text-xl font-black text-white">
-                        10€
-                      </span>
+                      <span className="text-xl font-black text-white">20€</span>
                     </div>
-                    {buyingPack === 'standard' && (
+                    {buyingPack === 'pro' && (
                       <p className="text-xs text-cyan-400 mt-2">Redirection...</p>
                     )}
                   </motion.button>
