@@ -78,7 +78,7 @@ interface Analysis {
 }
 
 export default function Home() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [matches, setMatches] = useState<Match[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [result, setResult] = useState<Analysis | null>(null);
@@ -223,14 +223,14 @@ export default function Home() {
           className="mt-3"
         >
           {isAuthenticated ? (
-            creditBalance !== null && (
-              <span className={`text-xs font-medium ${creditBalance <= 5 && creditBalance > 0 ? 'text-orange-400' : creditBalance === 0 ? 'text-red-400' : 'text-[#7a8a9a]'}`}>
-                {creditBalance === 0
-                  ? 'Plus de crédits — rechargez votre compte'
-                  : `${creditBalance} analyse${creditBalance > 1 ? 's' : ''} disponible${creditBalance > 1 ? 's' : ''}`}
-              </span>
-            )
-          ) : (
+            creditBalance === null
+              ? <div className="h-3 w-32 rounded bg-[#1c2838] animate-pulse" />
+              : <span className={`text-xs font-medium ${creditBalance <= 5 && creditBalance > 0 ? 'text-orange-400' : creditBalance === 0 ? 'text-red-400' : 'text-[#7a8a9a]'}`}>
+                  {creditBalance === 0
+                    ? 'Plus de crédits — rechargez votre compte'
+                    : `${creditBalance} analyse${creditBalance > 1 ? 's' : ''} disponible${creditBalance > 1 ? 's' : ''}`}
+                </span>
+          ) : status === 'loading' ? null : (
             !localLimitReached && (
               <div className="flex items-center gap-2.5">
                 <div className="flex gap-1">
